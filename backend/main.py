@@ -2,12 +2,11 @@ import os
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
+from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import asc
-from google import genai
-from google.genai import types
 
 from backend.database import get_db
 from backend.models import ChatMessage, User
@@ -25,10 +24,14 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+# Groq is OpenAI-compatible
+client = OpenAI(
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1",
+)
 
 SYSTEM_PROMPT = "You are a helpful assistant for a website."
-MODEL_NAME = "gemini-2.0-flash"
+MODEL_NAME = "openai/gpt-oss-120b"
 
 
 class ChatRequest(BaseModel):
@@ -45,7 +48,7 @@ async def chat(
     try:
         is_real_user = current_user is not None and not current_user.is_guest
 
-        # History: only real users
+        # History: only for registered users
         if is_real_user:
             history_rows = (
                 db.query(ChatMessage)
@@ -57,29 +60,20 @@ async def chat(
         else:
             history_rows = []
 
-        # Build Gemini conversation contents
-        contents = []
+        # Build OpenAI-style messages
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         for row in history_rows:
-            contents.append(
-                types.Content(role="user", parts=[types.Part(text=row.user_message)])
-            )
-            contents.append(
-                types.Content(role="model", parts=[types.Part(text=row.bot_reply)])
-            )
-        contents.append(
-            types.Content(role="user", parts=[types.Part(text=request.message)])
-        )
+            messages.append({"role": "user", "content": row.user_message})
+            messages.append({"role": "assistant", "content": row.bot_reply})
+        messages.append({"role": "user", "content": request.message})
 
-        response = client.models.generate_content(
+        response = client.chat.completions.create(
             model=MODEL_NAME,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-            ),
+            messages=messages,
         )
-        reply = response.text
+        reply = response.choices[0].message.content
 
-        # Save: only real users
+        # Save: only for registered users
         if is_real_user:
             log = ChatMessage(
                 user_id=current_user.id,
