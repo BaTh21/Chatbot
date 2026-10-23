@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from backend.database import get_db
@@ -47,11 +47,6 @@ def register(data: UserRegister, db: Session = Depends(get_db)):
 
 @router.post("/login")
 async def login(request: Request, db: Session = Depends(get_db)):
-    """
-    Accepts BOTH:
-      - JSON:  {"username": "...", "password": "..."}
-      - Form:  username=...&password=...
-    """
     content_type = request.headers.get("content-type", "")
 
     if "application/json" in content_type:
@@ -64,10 +59,7 @@ async def login(request: Request, db: Session = Depends(get_db)):
         password = form.get("password")
 
     if not username or not password:
-        raise HTTPException(
-            status_code=422,
-            detail="username and password are required",
-        )
+        raise HTTPException(status_code=422, detail="username and password are required")
 
     user = db.query(User).filter(User.username == username).first()
     if not user or user.is_guest or not verify_password(password, user.hashed_password):

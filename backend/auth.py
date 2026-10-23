@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
@@ -6,8 +7,13 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from dotenv import load_dotenv
+
 from backend.database import get_db
 from backend.models import User
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -43,7 +49,7 @@ async def get_current_user_optional(
         sub = payload.get("sub")
         if sub is None:
             return None
-        user_id = int(sub)       
+        user_id = int(sub)
     except (JWTError, ValueError):
         return None
     return db.query(User).filter(User.id == user_id).first()

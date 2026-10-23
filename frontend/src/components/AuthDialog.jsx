@@ -6,7 +6,7 @@ import {
 import { login, register } from "../api";
 
 export default function AuthDialog({ open, onClose, onSuccess }) {
-  const [tab, setTab] = useState(0); // 0 = login, 1 = register
+  const [tab, setTab] = useState(0);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -31,7 +31,6 @@ export default function AuthDialog({ open, onClose, onSuccess }) {
     try {
       if (tab === 1) {
         await register(username, password);
-        // after register, auto-login
         await login(username, password);
       } else {
         await login(username, password);
