@@ -47,18 +47,19 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
   return data;
 }
 
-export async function register(username, password) {
-  return request("/auth/register", { method: "POST", body: { username, password } });
-}
+// export async function register(username, password) {
+//   return request("/auth/register", { method: "POST", body: { username, password } });
+// }
 
-export async function login(username, password) {
-  const data = await request("/auth/login", { method: "POST", body: { username, password } });
-  if (data?.access_token) setToken(data.access_token);
-  return data;
-}
+// export async function login(username, password) {
+//   const data = await request("/auth/login", { method: "POST", body: { username, password } });
+//   if (data?.access_token) setToken(data.access_token);
+//   return data;
+// }
 
 export function logout() {
   clearToken();
+  localStorage.removeItem("user_profile");
 }
 export function isLoggedIn() {
   return Boolean(getToken());
@@ -164,4 +165,30 @@ export async function deleteAttachment(attachmentId) {
 
 export function attachmentUrl(id) {
   return `${API_URL}/attachments/${id}`;
+}
+
+export async function googleLogin(credential) {
+  const data = await request("/auth/google", {
+    method: "POST",
+    body: { credential },
+  });
+  if (data?.access_token) {
+    setToken(data.access_token);
+    localStorage.setItem("user_profile", JSON.stringify(data.user));
+  }
+  return data;
+}
+
+export function getUserProfile() {
+  try {
+    return JSON.parse(localStorage.getItem("user_profile"));
+  } catch {
+    return null;
+  }
+}
+
+export async function guestLogin() {
+  const data = await request("/auth/guest", { method: "POST" });
+  if (data?.access_token) setToken(data.access_token);
+  return data;
 }

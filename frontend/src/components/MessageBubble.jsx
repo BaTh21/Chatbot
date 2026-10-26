@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
 import {
-  Box, Avatar, Typography, Paper, IconButton, Tooltip, Chip,
+  Box, Typography, Paper, IconButton, Tooltip, Chip,
   TextField, Button
 } from "@mui/material";
-import SmartToyIcon from "@mui/icons-material/SmartToy";
-import PersonIcon from "@mui/icons-material/Person";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import CheckIcon from "@mui/icons-material/Check";
 import DownloadIcon from "@mui/icons-material/Download";
@@ -119,11 +117,7 @@ export default function MessageBubble({
   };
 
   return (
-    <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexDirection: isUser ? "row-reverse" : "row" }}>
-      <Avatar sx={{ width: 36, height: 36, bgcolor: isUser ? "grey.500" : "primary.main", flexShrink: 0 }}>
-        {isUser ? <PersonIcon fontSize="small" /> : <SmartToyIcon fontSize="small" />}
-      </Avatar>
-
+    <Box sx={{ display: "flex", mb: 3, justifyContent: isUser ? "flex-end" : "flex-start" }}>
       <Box sx={{ maxWidth: "75%", display: "flex", flexDirection: "column", alignItems: isUser ? "flex-end" : "flex-start" }}>
         <Paper
           elevation={0}
@@ -190,6 +184,7 @@ export default function MessageBubble({
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 0.5, px: 0.5 }}>
           {time && <Typography variant="caption" color="text.secondary">{time}</Typography>}
           
+          {/* Copy Button (Bot Only) */}
           {!isEditing && !isUser && content && (
             <Tooltip title={copied ? "Copied!" : "Copy reply"}>
               <IconButton size="small" onClick={handleCopy} sx={{ opacity: 0.6, "&:hover": { opacity: 1 } }}>
@@ -198,6 +193,7 @@ export default function MessageBubble({
             </Tooltip>
           )}
 
+          {/* Edit & Delete Buttons (User Only) */}
           {!isEditing && isUser && messageId && (
             <>
               <Tooltip title="Edit message">

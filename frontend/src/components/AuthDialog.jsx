@@ -1,44 +1,44 @@
 import React, { useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Button, Tabs, Tab, Box, Alert, CircularProgress,
+  Button, Box, Alert, Typography, Divider, CircularProgress
 } from "@mui/material";
-import { login, register } from "../api";
+import { GoogleLogin } from '@react-oauth/google';
+import { googleLogin, guestLogin } from "../api";
 
 export default function AuthDialog({ open, onClose, onSuccess }) {
-  const [tab, setTab] = useState(0);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const reset = () => {
-    setUsername("");
-    setPassword("");
+  const handleClose = () => {
     setError("");
     setLoading(false);
-  };
-
-  const handleClose = () => {
-    reset();
     onClose();
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleGoogleSuccess = async (credentialResponse) => {
     setError("");
     setLoading(true);
     try {
-      if (tab === 1) {
-        await register(username, password);
-        await login(username, password);
-      } else {
-        await login(username, password);
-      }
+      await googleLogin(credentialResponse.credential);
       onSuccess();
       handleClose();
     } catch (err) {
-      setError(err.message || "Something went wrong");
+      setError(err.message || "Google login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await guestLogin();
+      onSuccess();
+      handleClose();
+    } catch (err) {
+      setError(err.message || "Guest login failed");
     } finally {
       setLoading(false);
     }
@@ -46,46 +46,52 @@ export default function AuthDialog({ open, onClose, onSuccess }) {
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ pb: 0 }}>
-        <Tabs value={tab} onChange={(_, v) => { setTab(v); setError(""); }}>
-          <Tab label="Login" />
-          <Tab label="Register" />
-        </Tabs>
+      <DialogTitle sx={{ textAlign: "center", pb: 1, pt: 3 }}>
+        <Typography variant="h5" fontWeight={700}>
+          Welcome to AI Chat
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Sign in to save your conversations
+        </Typography>
       </DialogTitle>
-      <Box component="form" onSubmit={handleSubmit}>
-        <DialogContent>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          <TextField
-            label="Username"
-            fullWidth
-            margin="normal"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            autoFocus
+      
+      <DialogContent sx={{ pb: 2 }}>
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+        
+        {/* Google Login */}
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={() => setError("Google Login Failed")}
+            theme="outline"
+            shape="pill"
+            text="continue_with"
+            size="large"
           />
-          <TextField
-            label="Password"
-            type="password"
-            fullWidth
-            margin="normal"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={handleClose} disabled={loading}>Cancel</Button>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={loading || !username || !password}
-            startIcon={loading ? <CircularProgress size={16} /> : null}
-          >
-            {tab === 1 ? "Register" : "Login"}
-          </Button>
-        </DialogActions>
-      </Box>
+        </Box>
+
+        <Divider sx={{ my: 3 }}>
+          <Typography variant="caption" color="text.secondary">OR</Typography>
+        </Divider>
+
+        {/* Guest Login */}
+        <Button
+          fullWidth
+          variant="outlined"
+          size="large"
+          onClick={handleGuestLogin}
+          disabled={loading}
+          sx={{ borderRadius: 2, py: 1.5 }}
+        >
+          {loading ? <CircularProgress size={24} /> : "Continue as Guest"}
+        </Button>
+      </DialogContent>
+
+      <DialogActions sx={{ justifyContent: "center", pb: 3 }}>
+        <Typography variant="caption" color="text.secondary">
+          Guest accounts do not save history.
+        </Typography>
+      </DialogActions>
     </Dialog>
   );
 }

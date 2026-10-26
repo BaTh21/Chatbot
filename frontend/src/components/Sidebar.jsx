@@ -20,6 +20,7 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import SettingsBrightnessIcon from "@mui/icons-material/SettingsBrightness";
+import { getUserProfile } from "../api";
 
 function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders, onMoveToFolder }) {
   const [menuAnchor, setMenuAnchor] = useState(null);
@@ -84,6 +85,9 @@ export default function Sidebar({
   const [renamingFolder, setRenamingFolder] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null); 
+
+  // Get the Google Profile data
+  const profile = getUserProfile();
 
   const handleDeleteClick = (type, id, title) => {
     setConfirmDelete({ type, id, title });
@@ -279,18 +283,24 @@ export default function Sidebar({
       <Box sx={{ p: 2 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Box
-            sx={{ display: "flex", alignItems: "center", gap: 1, cursor: "pointer", flexGrow: 1 }}
+            sx={{ display: "flex", alignItems: "center", gap: 1, cursor: "pointer", flexGrow: 1, overflow: "hidden" }}
             onClick={(e) => setAnchorEl(e.currentTarget)}
           >
-            <Avatar sx={{ width: 32, height: 32, bgcolor: loggedIn ? "primary.main" : "grey.400" }}>
-              {loggedIn ? "U" : "G"}
+            {/* Display Google Profile Picture or Generic Letter */}
+            <Avatar 
+              src={profile?.picture || ""} 
+              sx={{ width: 36, height: 36, bgcolor: "primary.main" }}
+            >
+              {profile?.name ? profile.name[0].toUpperCase() : (loggedIn ? "U" : "G")}
             </Avatar>
-            <Box sx={{ minWidth: 0 }}>
+            
+            <Box sx={{ minWidth: 0, flexGrow: 1 }}>
               <Typography variant="body2" fontWeight={600} noWrap>
-                {loggedIn ? "User" : "Guest"}
+                {/* Display Real Name or Guest */}
+                {profile?.name || (loggedIn ? "User" : "Guest")}
               </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap>
-                {loggedIn ? "History saved" : "No history saved"}
+              <Typography variant="caption" color="text.secondary" noWrap display="block">
+                {loggedIn ? (profile?.email || "History saved") : "No history saved"}
               </Typography>
             </Box>
           </Box>

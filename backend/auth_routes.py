@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.models import User
-from backend.auth import get_password_hash, verify_password, create_access_token
+from backend.auth import get_password_hash, verify_google_token, verify_password, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -18,6 +18,8 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class GoogleToken(BaseModel):
+    credential: str
 
 @router.post("/guest")
 def create_guest(db: Session = Depends(get_db)):
@@ -62,8 +64,65 @@ async def login(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=422, detail="username and password are required")
 
     user = db.query(User).filter(User.username == username).first()
-    if not user or user.is_guest or not verify_password(password, user.hashed_password):
+    
+    # 1. Check if user exists
+    if not user:
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
+        
+    # 2. Check if they are a Google user
+    if user.hashed_password.startswith("google_oauth_"):
+        raise HTTPException(
+            status_code=400, 
+            detail="This account was created with Google. Please use the 'Continue with Google' button."
+        )
+
+    # 3. Check if they are a Guest
+    if user.is_guest:
+        raise HTTPException(status_code=401, detail="Guest accounts cannot log in.")
+
+    # 4. Normal password verification
+    if not verify_password(password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
     token = create_access_token(data={"sub": str(user.id)})
     return {"access_token": token, "token_type": "bearer", "is_guest": False}
+
+@router.post("/google")
+def google_login(data: GoogleToken, db: Session = Depends(get_db)):
+    user_info = verify_google_token(data.credential)
+    if not user_info:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    user = db.query(User).filter(User.username == user_info["email"]).first()
+    
+    if not user:
+        # Create new user with Google data
+        user = User(
+            username=user_info["email"], 
+            hashed_password="google_oauth_" + str(uuid.uuid4()),
+            is_guest=False,
+            name=user_info.get("name"),         
+            picture=user_info.get("picture")   
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    else:
+        # Update name/picture if they changed on Google
+        user.name = user_info.get("name")
+        user.picture = user_info.get("picture")
+        db.commit()
+
+    token = create_access_token(data={"sub": str(user.id)})
+    
+    # Return user data alongside the token
+    return {
+        "access_token": token, 
+        "token_type": "bearer", 
+        "is_guest": False,
+        "user": {
+            "name": user.name,
+            "email": user.username,
+            "picture": user.picture
+        }
+    }

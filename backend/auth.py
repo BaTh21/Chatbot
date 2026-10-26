@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 
 from backend.database import get_db
 from backend.models import User
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -36,6 +38,26 @@ def create_access_token(data: dict):
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_google_token(token: str):
+    try:
+        # Specify the CLIENT_ID of the app that accesses the backend
+        idinfo = id_token.verify_oauth2_token(
+            token, 
+            google_requests.Request(), 
+            os.getenv("GOOGLE_CLIENT_ID")
+        )
+        
+        # ID token is valid. Get the user's Google Account ID from the decoded token.
+        return {
+            "google_id": idinfo['sub'],
+            "email": idinfo.get('email'),
+            "name": idinfo.get('name'),       
+            "picture": idinfo.get('picture'),  
+        }
+    except ValueError:
+        # Invalid token
+        return None
 
 
 async def get_current_user_optional(

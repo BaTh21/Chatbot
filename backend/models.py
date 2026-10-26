@@ -10,6 +10,8 @@ class User(Base):
     username = Column(String, unique=True, nullable=False, index=True)
     hashed_password = Column(String, nullable=False)
     is_guest = Column(Boolean, default=False, nullable=False)
+    name = Column(String, nullable=True)
+    picture = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
