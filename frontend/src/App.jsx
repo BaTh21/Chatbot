@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { Box, Snackbar, Alert, ThemeProvider, CssBaseline } from "@mui/material";
+import { 
+  Box, Snackbar, Alert, ThemeProvider, CssBaseline, Drawer, useMediaQuery 
+} from "@mui/material";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import AuthDialog from "./components/AuthDialog";
@@ -8,23 +10,15 @@ import {
   fetchHistory, fetchFolders, fetchAttachments,
   createFolder, deleteFolder, renameFolder,
   isLoggedIn, logout, sendChatMessage, deleteConversation,
-  moveConversation, uploadAttachment,
-  deleteMessage, updateMessage,
+  moveConversation, uploadAttachment, deleteMessage, updateMessage,
 } from "./api";
 
-function makeId() {
-  return crypto.randomUUID();
-}
-function nowTime() {
-  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
+function makeId() { return crypto.randomUUID(); }
+function nowTime() { return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
 
 export default function App() {
   // --- THEME STATE ---
-  const [themeMode, setThemeMode] = useState(
-    () => localStorage.getItem("themeMode") || "system"
-  );
-
+  const [themeMode, setThemeMode] = useState(() => localStorage.getItem("themeMode") || "system");
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const activeMode = themeMode === "system" ? (prefersDark ? "dark" : "light") : themeMode;
   const theme = useMemo(() => getTheme(activeMode), [activeMode]);
@@ -32,6 +26,19 @@ export default function App() {
   const handleThemeChange = (newMode) => {
     setThemeMode(newMode);
     localStorage.setItem("themeMode", newMode);
+  };
+
+  // --- RESPONSIVE STATE ---
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
+
+  // Auto-toggle sidebar when screen size changes
+  useEffect(() => {
+    setSidebarOpen(!isMobile);
+  }, [isMobile]);
+
+  const handleToggleSidebar = () => {
+    setSidebarOpen((prev) => !prev);
   };
 
   // --- APP STATE ---
@@ -48,6 +55,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const abortRef = useRef(null);
 
+  // --- LOAD DATA ---
   useEffect(() => {
     const load = async () => {
       if (!isLoggedIn()) {
@@ -92,38 +100,21 @@ export default function App() {
           convs.push({ id: cid, title: items[0].user_message.slice(0, 40) || "Image/File" });
           const arr = [];
           items.forEach((r) => {
-            arr.push({
-              role: "user",
-              content: r.user_message,
-              time: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              id: r.id,
-            });
-            arr.push({
-              role: "assistant",
-              content: r.bot_reply,
-              time: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-              id: r.id,
-            });
+            arr.push({ role: "user", content: r.user_message, time: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), id: r.id });
+            arr.push({ role: "assistant", content: r.bot_reply, time: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), id: r.id });
           });
           msgs[cid] = arr;
         });
 
         const attachmentsByConv = {};
-        await Promise.all(
-          convs.map(async (c) => {
-            try {
-              attachmentsByConv[c.id] = await fetchAttachments(c.id);
-            } catch {
-              attachmentsByConv[c.id] = [];
-            }
-          })
-        );
+        await Promise.all(convs.map(async (c) => {
+          try { attachmentsByConv[c.id] = await fetchAttachments(c.id); } catch { attachmentsByConv[c.id] = []; }
+        }));
 
         Object.keys(msgs).forEach((cid) => {
           const atts = attachmentsByConv[cid] || [];
           if (!atts.length) return;
           const arr = msgs[cid];
-          
           atts.forEach(att => {
             const msgIdx = arr.findIndex(m => m.role === "user" && m.id === att.message_id);
             if (msgIdx !== -1) {
@@ -139,29 +130,26 @@ export default function App() {
         setFolderByConv(folderMap);
         setActiveId(convs[0]?.id ?? null);
       } catch (err) {
-        if (err.status === 401) {
-          logout();
-          setLoggedIn(false);
-        }
+        if (err.status === 401) { logout(); setLoggedIn(false); }
       }
     };
     load();
   }, [loggedIn]);
 
+  // --- PERSIST GUEST DATA ---
   useEffect(() => {
     if (loggedIn) return;
-    localStorage.setItem(
-      "chatbot_conversations",
-      JSON.stringify({ conversations, messages: messagesByConv, folders, folderByConv })
-    );
+    localStorage.setItem("chatbot_conversations", JSON.stringify({ conversations, messages: messagesByConv, folders, folderByConv }));
   }, [conversations, messagesByConv, folders, folderByConv, loggedIn]);
 
+  // --- HANDLERS ---
   const newChat = (folderId = null) => {
     const id = makeId();
     setConversations((prev) => [{ id, title: "New conversation" }, ...prev]);
     setMessagesByConv((prev) => ({ ...prev, [id]: [] }));
     if (folderId != null) setFolderByConv((prev) => ({ ...prev, [id]: folderId }));
     setActiveId(id);
+    if (isMobile) setSidebarOpen(false); // Auto-close sidebar on mobile
   };
 
   const handleCreateFolder = async (name) => {
@@ -189,9 +177,7 @@ export default function App() {
 
   const handleDeleteFolder = async (folderId) => {
     if (loggedIn) {
-      try {
-        await deleteFolder(folderId);
-      } catch (err) { setError(err.message); return; }
+      try { await deleteFolder(folderId); } catch (err) { setError(err.message); return; }
     }
     setFolders((prev) => prev.filter((f) => f.id !== folderId));
     setFolderByConv((prev) => {
@@ -203,44 +189,28 @@ export default function App() {
 
   const handleMoveToFolder = async (convId, folderId) => {
     if (loggedIn) {
-      try {
-        await moveConversation(convId, folderId);
-      } catch (err) { setError(err.message); return; }
+      try { await moveConversation(convId, folderId); } catch (err) { setError(err.message); return; }
     }
     setFolderByConv((prev) => ({ ...prev, [convId]: folderId }));
   };
 
   const deleteChat = async (id) => {
     if (loggedIn) {
-      try {
-        await deleteConversation(id);
-      } catch (err) { setError(err.message); return; }
+      try { await deleteConversation(id); } catch (err) { setError(err.message); return; }
     }
     setConversations((prev) => prev.filter((c) => c.id !== id));
-    setMessagesByConv((prev) => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
-    setFolderByConv((prev) => {
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
-    });
+    setMessagesByConv((prev) => { const copy = { ...prev }; delete copy[id]; return copy; });
+    setFolderByConv((prev) => { const copy = { ...prev }; delete copy[id]; return copy; });
     if (activeId === id) setActiveId(null);
   };
 
   const handleDeleteMessage = async (messageId) => {
     if (loggedIn) {
-      try {
-        await deleteMessage(messageId);
-      } catch (err) { setError(err.message); return; }
+      try { await deleteMessage(messageId); } catch (err) { setError(err.message); return; }
     }
     setMessagesByConv((prev) => {
       const newMsgs = { ...prev };
-      Object.keys(newMsgs).forEach((cid) => {
-        newMsgs[cid] = newMsgs[cid].filter((m) => m.id !== messageId);
-      });
+      Object.keys(newMsgs).forEach((cid) => { newMsgs[cid] = newMsgs[cid].filter((m) => m.id !== messageId); });
       return newMsgs;
     });
   };
@@ -252,32 +222,19 @@ export default function App() {
     setLoading(true);
     try {
       const data = await updateMessage(messageId, newText);
-
       setMessagesByConv((prev) => {
         const arr = [...(prev[convId] || [])];
         const idx = arr.findIndex((m) => m.id === messageId);
-        
         if (idx !== -1) {
           arr[idx] = { ...arr[idx], content: data.user_message };
-          
           if (idx + 1 < arr.length && arr[idx + 1].role === "assistant") {
-            arr[idx + 1] = { 
-              ...arr[idx + 1], 
-              content: data.bot_reply, 
-              time: nowTime() 
-            };
+            arr[idx + 1] = { ...arr[idx + 1], content: data.bot_reply, time: nowTime() };
           } else {
-            arr.splice(idx + 1, 0, { 
-              role: "assistant", 
-              content: data.bot_reply, 
-              time: nowTime(), 
-              id: data.id 
-            });
+            arr.splice(idx + 1, 0, { role: "assistant", content: data.bot_reply, time: nowTime(), id: data.id });
           }
         }
         return { ...prev, [convId]: arr };
       });
-
     } catch (err) {
       setError(err.message || "Failed to edit message");
     } finally {
@@ -305,7 +262,6 @@ export default function App() {
     }
 
     const folderId = folderByConv[convId] ?? null;
-
     let uploaded = [];
     if (loggedIn && pendingFiles.length > 0) {
       setIsUploading(true);
@@ -323,22 +279,10 @@ export default function App() {
     }
 
     const tempId = makeId();
-    const userMsg = {
-      role: "user",
-      content: text,
-      time: nowTime(),
-      attachments: uploaded,
-      id: tempId, 
-    };
+    const userMsg = { role: "user", content: text, time: nowTime(), attachments: uploaded, id: tempId };
     setMessagesByConv((prev) => ({ ...prev, [convId]: [...(prev[convId] || []), userMsg] }));
     setPendingFiles([]);
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === convId && c.title === "New conversation"
-          ? { ...c, title: text.slice(0, 40) || "New conversation" }
-          : c
-      )
-    );
+    setConversations((prev) => prev.map((c) => c.id === convId && c.title === "New conversation" ? { ...c, title: text.slice(0, 40) || "New conversation" } : c));
 
     if (!text.trim()) return;
 
@@ -346,24 +290,15 @@ export default function App() {
     abortRef.current = new AbortController();
     try {
       const data = await sendChatMessage(text, convId, convId, folderId);
-      
       setMessagesByConv((prev) => {
         const arr = [...(prev[convId] || [])];
         const tempIdx = arr.findIndex(m => m.id === tempId);
-        if (tempIdx !== -1) {
-          arr[tempIdx] = { ...arr[tempIdx], id: data.id };
-        }
-        
+        if (tempIdx !== -1) arr[tempIdx] = { ...arr[tempIdx], id: data.id };
         arr.push({ role: "assistant", content: data.reply, time: nowTime(), id: data.id });
-        
         return { ...prev, [convId]: arr };
       });
-
     } catch (err) {
-      if (err.status === 401) {
-        logout();
-        setLoggedIn(false);
-      }
+      if (err.status === 401) { logout(); setLoggedIn(false); }
       setError(err.message || "Request failed");
       setMessagesByConv((prev) => ({
         ...prev,
@@ -383,32 +318,76 @@ export default function App() {
   const activeMessages = activeId ? messagesByConv[activeId] || [] : [];
   const activeConv = conversations.find((c) => c.id === activeId);
 
+  // --- RENDER ---
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: "flex", height: "100vh", bgcolor: "background.default" }}>
-        <Sidebar
-          conversations={conversations}
-          folders={folders}
-          folderByConv={folderByConv}
-          activeId={activeId}
-          onSelect={setActiveId}
-          onNew={newChat}
-          onDelete={deleteChat}
-          onCreateFolder={handleCreateFolder}
-          onRenameFolder={handleRenameFolder}
-          onDeleteFolder={handleDeleteFolder}
-          onMoveToFolder={handleMoveToFolder}
-          loggedIn={loggedIn}
-          onLogin={() => setAuthOpen(true)}
-          onLogout={() => {
-            logout();
-            setLoggedIn(false);
-          }}
-          themeMode={themeMode}
-          onThemeChange={handleThemeChange}
-        />
+      <Box sx={{ display: "flex", height: "100vh", bgcolor: "background.default", overflow: "hidden" }}>
+        
+        {/* Desktop Sidebar */}
+        {!isMobile && (
+          <Box
+            sx={{
+              width: sidebarOpen ? 280 : 0,
+              flexShrink: 0,
+              transition: "width 0.3s ease",
+              overflow: "hidden",
+              borderRight: sidebarOpen ? "1px solid" : "none",
+              borderColor: "divider",
+              bgcolor: "background.paper",
+            }}
+          >
+            <Sidebar
+              conversations={conversations}
+              folders={folders}
+              folderByConv={folderByConv}
+              activeId={activeId}
+              onSelect={(id) => { setActiveId(id); }}
+              onNew={newChat}
+              onDelete={deleteChat}
+              onCreateFolder={handleCreateFolder}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onMoveToFolder={handleMoveToFolder}
+              loggedIn={loggedIn}
+              onLogin={() => setAuthOpen(true)}
+              onLogout={() => { logout(); setLoggedIn(false); }}
+              themeMode={themeMode}
+              onThemeChange={handleThemeChange}
+            />
+          </Box>
+        )}
 
+        {/* Mobile Sidebar (Drawer) */}
+        {isMobile && (
+          <Drawer
+            open={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            ModalProps={{ keepMounted: true }} // Better open performance on mobile
+            sx={{ "& .MuiDrawer-paper": { width: 280, boxSizing: "border-box" } }}
+          >
+            <Sidebar
+              conversations={conversations}
+              folders={folders}
+              folderByConv={folderByConv}
+              activeId={activeId}
+              onSelect={(id) => { setActiveId(id); setSidebarOpen(false); }} // Close on select
+              onNew={newChat}
+              onDelete={deleteChat}
+              onCreateFolder={handleCreateFolder}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onMoveToFolder={handleMoveToFolder}
+              loggedIn={loggedIn}
+              onLogin={() => setAuthOpen(true)}
+              onLogout={() => { logout(); setLoggedIn(false); }}
+              themeMode={themeMode}
+              onThemeChange={handleThemeChange}
+            />
+          </Drawer>
+        )}
+
+        {/* Chat Area */}
         <ChatArea
           messages={activeMessages}
           loading={loading}
@@ -422,18 +401,21 @@ export default function App() {
           isUploading={isUploading}
           onEditMessage={handleEditMessage}
           onDeleteMessage={handleDeleteMessage}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={handleToggleSidebar}
+          isMobile={isMobile}
         />
 
-        <AuthDialog
-          open={authOpen}
-          onClose={() => setAuthOpen(false)}
-          onSuccess={() => setLoggedIn(true)}
+        <AuthDialog 
+          open={authOpen} 
+          onClose={() => setAuthOpen(false)} 
+          onSuccess={() => setLoggedIn(true)} 
         />
 
-        <Snackbar
-          open={Boolean(error)}
-          autoHideDuration={4000}
-          onClose={() => setError("")}
+        <Snackbar 
+          open={Boolean(error)} 
+          autoHideDuration={4000} 
+          onClose={() => setError("")} 
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         >
           <Alert severity="error" onClose={() => setError("")}>{error}</Alert>

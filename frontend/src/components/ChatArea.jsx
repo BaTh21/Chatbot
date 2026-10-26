@@ -7,6 +7,8 @@ import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import CloseIcon from "@mui/icons-material/Close";
+import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
+import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
 import MessageBubble from "./MessageBubble";
 import WelcomeScreen from "./WelcomeScreen";
 
@@ -14,6 +16,7 @@ export default function ChatArea({
   messages, loading, onSend, onStop, headerTitle, isGuest,
   pendingFiles, onAddFiles, onRemoveFile, isUploading,
   onEditMessage, onDeleteMessage,
+  sidebarOpen, onToggleSidebar, isMobile,
 }) {
   const [input, setInput] = useState("");
   const endRef = useRef(null);
@@ -50,14 +53,22 @@ export default function ChatArea({
 
   return (
     <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", height: "100vh", minWidth: 0 }}>
-      {/* Header */}
+      {/* Responsive Header */}
       <Box
         sx={{
-          px: 3, py: 2, borderBottom: "1px solid", borderColor: "divider",
+          px: { xs: 1.5, sm: 2, md: 3 }, 
+          py: { xs: 1.5, sm: 2 }, 
+          borderBottom: "1px solid", borderColor: "divider",
           display: "flex", alignItems: "center", gap: 1, bgcolor: "background.paper",
         }}
       >
-        <Typography variant="h6" sx={{ flexGrow: 1 }} noWrap>
+        <Tooltip title={sidebarOpen ? "Close sidebar" : "Open sidebar"}>
+          <IconButton onClick={onToggleSidebar} sx={{ mr: { xs: 0, sm: 1 } }}>
+            {sidebarOpen ? <CloseFullscreenIcon /> : <ViewSidebarIcon />}
+          </IconButton>
+        </Tooltip>
+
+        <Typography variant="h6" sx={{ flexGrow: 1, fontSize: { xs: "1rem", sm: "1.25rem" } }} noWrap>
           {headerTitle || "New chat"}
         </Typography>
         <Chip
@@ -65,15 +76,16 @@ export default function ChatArea({
           label={isGuest ? "Guest" : "Signed in"}
           color={isGuest ? "default" : "primary"}
           variant="outlined"
+          sx={{ display: { xs: "none", sm: "flex" } }} // Hide chip on very small screens
         />
       </Box>
 
       {/* Messages Area */}
-      <Box sx={{ flexGrow: 1, overflowY: "auto", px: 3, py: 3 }}>
+      <Box sx={{ flexGrow: 1, overflowY: "auto", px: { xs: 2, sm: 3 }, py: { xs: 2, sm: 3 } }}>
         {messages.length === 0 && !loading ? (
           <WelcomeScreen onSelect={(p) => onSend(p)} />
         ) : (
-          <Box sx={{ maxWidth: 820, mx: "auto" }}>
+          <Box sx={{ maxWidth: 820, mx: "auto", width: "100%" }}>
             {messages.map((m, i) => (
               <MessageBubble
                 key={i}
@@ -84,10 +96,11 @@ export default function ChatArea({
                 messageId={m.id}
                 onEdit={onEditMessage}
                 onDelete={onDeleteMessage}
+                isMobile={isMobile}
               />
             ))}
             {loading && (
-              <Box sx={{ display: "flex", gap: 1, alignItems: "center", ml: 6, mt: 1 }}>
+              <Box sx={{ display: "flex", gap: 1, alignItems: "center", ml: 2, mt: 1 }}>
                 <CircularProgress size={14} />
                 <Typography variant="caption" color="text.secondary">
                   Assistant is typing…
@@ -100,7 +113,7 @@ export default function ChatArea({
       </Box>
 
       {/* Composer Area */}
-      <Box sx={{ borderTop: "1px solid", borderColor: "divider", bgcolor: "background.paper", p: 2 }}>
+      <Box sx={{ borderTop: "1px solid", borderColor: "divider", bgcolor: "background.paper", p: { xs: 1.5, sm: 2 } }}>
         <Paper
           component="form"
           onSubmit={handleSubmit}
@@ -126,6 +139,7 @@ export default function ChatArea({
               <IconButton
                 onClick={() => fileRef.current?.click()}
                 disabled={isGuest || loading || isUploading}
+                size={isMobile ? "small" : "medium"}
               >
                 {isUploading ? <CircularProgress size={20} /> : <AttachFileIcon />}
               </IconButton>
@@ -147,7 +161,7 @@ export default function ChatArea({
             sx={{ px: 1, py: 0.5 }}
           />
           {loading ? (
-            <IconButton onClick={onStop} color="error">
+            <IconButton onClick={onStop} color="error" size={isMobile ? "small" : "medium"}>
               <StopIcon />
             </IconButton>
           ) : (
@@ -155,6 +169,7 @@ export default function ChatArea({
               type="submit"
               color="primary"
               disabled={(!input.trim() && pendingFiles.length === 0) || isUploading}
+              size={isMobile ? "small" : "medium"}
             >
               <SendIcon />
             </IconButton>
@@ -177,7 +192,7 @@ export default function ChatArea({
           </Box>
         )}
 
-        <Typography variant="caption" color="text.secondary" sx={{ display: "block", textAlign: "center", mt: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", textAlign: "center", mt: 1, fontSize: { xs: "0.7rem", sm: "0.75rem" } }}>
           AI can make mistakes. Verify important information.
         </Typography>
       </Box>
