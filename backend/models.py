@@ -1,5 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Index, Boolean, ForeignKey
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from backend.database import Base
 
 class User(Base):
@@ -36,6 +37,7 @@ class ChatMessage(Base):
     user_message = Column(Text, nullable=False)
     bot_reply = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    attachments = relationship("Attachment", back_populates="message", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_chat_messages_session_created", "session_id", "created_at"),
@@ -49,13 +51,13 @@ class Attachment(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     conversation_id = Column(String, nullable=False, index=True)
-    message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True, index=True)
+    message_id = Column(Integer, ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=True, index=True)
     filename = Column(String, nullable=False)
     content_type = Column(String, nullable=False)
     size = Column(Integer, nullable=False)
     stored_path = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-
+    message = relationship("ChatMessage", back_populates="attachments")
     __table_args__ = (
         Index("ix_attachments_conv", "conversation_id", "created_at"),
     )

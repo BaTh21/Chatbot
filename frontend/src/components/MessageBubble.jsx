@@ -77,7 +77,7 @@ function AttachmentChip({ a }) {
       onClick={handleDownload}
       onDelete={handleDownload}
       deleteIcon={<DownloadIcon fontSize="small" />}
-      sx={{ mt: 1, bgcolor: "background.paper" }}
+      sx={{ mt: 1, bgcolor: "background.default" }}
     />
   );
 }
@@ -90,7 +90,6 @@ export default function MessageBubble({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
 
-  // Keep edit value in sync if content changes externally
   useEffect(() => {
     setEditValue(content);
   }, [content]);
@@ -121,7 +120,7 @@ export default function MessageBubble({
 
   return (
     <Box sx={{ display: "flex", gap: 1.5, mb: 3, flexDirection: isUser ? "row-reverse" : "row" }}>
-      <Avatar sx={{ width: 36, height: 36, bgcolor: isUser ? "grey.400" : "primary.main", flexShrink: 0 }}>
+      <Avatar sx={{ width: 36, height: 36, bgcolor: isUser ? "grey.500" : "primary.main", flexShrink: 0 }}>
         {isUser ? <PersonIcon fontSize="small" /> : <SmartToyIcon fontSize="small" />}
       </Avatar>
 
@@ -132,14 +131,17 @@ export default function MessageBubble({
             px: 2, py: 1.5, borderRadius: 3,
             borderTopRightRadius: isUser ? 0.5 : 3,
             borderTopLeftRadius: isUser ? 3 : 0.5,
-            bgcolor: isUser ? "primary.main" : "grey.50",
+            bgcolor: isUser ? "primary.main" : "background.paper",
             color: isUser ? "primary.contrastText" : "text.primary",
             border: isUser ? "none" : "1px solid",
             borderColor: "divider",
             "& p": { my: 0.5, lineHeight: 1.6 },
             "& ul, & ol": { pl: 2.5, my: 0.5 },
             "& pre": { bgcolor: "grey.900", color: "grey.100", p: 1.5, borderRadius: 2, overflowX: "auto", my: 1, fontSize: "0.85rem" },
-            "& code": { bgcolor: isUser ? "rgba(255,255,255,0.2)" : "grey.200", px: 0.5, py: 0.2, borderRadius: 0.5 },
+            "& code": { 
+              bgcolor: isUser ? "rgba(255,255,255,0.2)" : "action.selected", 
+              px: 0.5, py: 0.2, borderRadius: 0.5 
+            },
             "& pre code": { bgcolor: "transparent", p: 0 },
             "& a": { color: isUser ? "inherit" : "primary.main" },
           }}
@@ -153,7 +155,7 @@ export default function MessageBubble({
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 sx={{ 
-                  bgcolor: "background.paper", 
+                  bgcolor: "background.default", 
                   borderRadius: 1,
                   "& .MuiInputBase-input": { color: "text.primary" }
                 }}
@@ -185,11 +187,9 @@ export default function MessageBubble({
           )}
         </Paper>
 
-        {/* Action Buttons */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 0.5, px: 0.5 }}>
           {time && <Typography variant="caption" color="text.secondary">{time}</Typography>}
           
-          {/* Copy Button (Bot Only) */}
           {!isEditing && !isUser && content && (
             <Tooltip title={copied ? "Copied!" : "Copy reply"}>
               <IconButton size="small" onClick={handleCopy} sx={{ opacity: 0.6, "&:hover": { opacity: 1 } }}>
@@ -198,7 +198,6 @@ export default function MessageBubble({
             </Tooltip>
           )}
 
-          {/* Edit & Delete Buttons (User Only) */}
           {!isEditing && isUser && messageId && (
             <>
               <Tooltip title="Edit message">

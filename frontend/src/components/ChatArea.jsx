@@ -108,7 +108,8 @@ export default function ChatArea({
           sx={{
             maxWidth: 820, mx: "auto", display: "flex", gap: 1, alignItems: "flex-end",
             border: "1px solid", borderColor: "divider", borderRadius: 3, p: 1,
-            "&:focus-within": { borderColor: "primary.main" },
+            bgcolor: "background.default",
+            "&:focus-within": { borderColor: "primary.main", bgcolor: "background.paper" },
           }}
         >
           <input
@@ -170,6 +171,7 @@ export default function ChatArea({
                 onDelete={() => onRemoveFile(i)}
                 deleteIcon={<CloseIcon />}
                 size="small"
+                sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider" }}
               />
             ))}
           </Box>

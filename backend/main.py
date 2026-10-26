@@ -241,10 +241,28 @@ def delete_message(
     if msg.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your message")
 
-    # Delete this message and any AI reply that immediately follows it
-    # (Since we save user + bot in one row, deleting the row deletes both)
+    # 1. Find all attachments linked to this message
+    attachments = (
+        db.query(Attachment)
+        .filter(
+            Attachment.user_id == current_user.id,
+            Attachment.message_id == message_id,
+        )
+        .all()
+    )
+
+    # 2. Delete physical files from disk
+    for att in attachments:
+        if Path(att.stored_path).exists():
+            try:
+                os.remove(att.stored_path)
+            except Exception as e:
+                print(f"Failed to delete file {att.stored_path}: {e}")
+
+    # 3. Delete the message (this cascades and deletes the attachment rows in the DB)
     db.delete(msg)
     db.commit()
+    
     return {"deleted": message_id}
 
 @app.patch("/history/message/{message_id}")
@@ -263,7 +281,7 @@ def update_message(
     if msg.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your message")
 
-    # 1. Update the user message in the DB
+    # 1. Update the user message text in DB
     msg.user_message = data.message
     db.commit()
 
@@ -281,7 +299,6 @@ def update_message(
     # 3. Build messages for AI
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for row in history_rows:
-        # Skip the current message if its bot_reply is empty, we'll add it at the end
         if row.id == msg.id and not row.bot_reply:
             continue
         messages.append({"role": "user", "content": row.user_message})
@@ -353,6 +370,18 @@ def delete_conversation(
     if existing.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your conversation")
 
+    attachments = (
+        db.query(Attachment)
+        .filter(
+            Attachment.user_id == current_user.id,
+            Attachment.conversation_id == conversation_id,
+        )
+        .all()
+    )
+    for att in attachments:
+        if Path(att.stored_path).exists():
+            os.remove(att.stored_path)
+
     deleted = (
         db.query(ChatMessage)
         .filter(
@@ -362,6 +391,7 @@ def delete_conversation(
         .delete(synchronize_session=False)
     )
     db.commit()
+    
     return {"deleted": deleted, "conversation_id": conversation_id}
 
 

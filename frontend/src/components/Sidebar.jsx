@@ -17,6 +17,9 @@ import CreateNewFolderOutlinedIcon from "@mui/icons-material/CreateNewFolderOutl
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
+import SettingsBrightnessIcon from "@mui/icons-material/SettingsBrightness";
 
 function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders, onMoveToFolder }) {
   const [menuAnchor, setMenuAnchor] = useState(null);
@@ -24,9 +27,12 @@ function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders
     <ListItemButton
       selected={c.id === activeId}
       onClick={() => onSelect(c.id)}
-      sx={{ mx: 1, borderRadius: 1, mb: 0.5, "&.Mui-selected": { bgcolor: "primary.50" } }}
+      sx={{ 
+        mx: 1, borderRadius: 1, mb: 0.5, 
+        "&.Mui-selected": { bgcolor: "primary.main", color: "primary.contrastText", "&:hover": { bgcolor: "primary.dark" } } 
+      }}
     >
-      <ChatBubbleOutlineOutlined fontSize="small" sx={{ mr: 1, color: "text.secondary" }} />
+      <ChatBubbleOutlineOutlined fontSize="small" sx={{ mr: 1, color: c.id === activeId ? "inherit" : "text.secondary" }} />
       <ListItemText
         primary={c.title || "New conversation"}
         slotProps={{ primary: { variant: "body2", noWrap: true } }}
@@ -35,7 +41,7 @@ function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders
         <IconButton
           size="small"
           onClick={(e) => { e.stopPropagation(); setMenuAnchor(e.currentTarget); }}
-          sx={{ opacity: 0.5, "&:hover": { opacity: 1 } }}
+          sx={{ opacity: 0.5, "&:hover": { opacity: 1 }, color: "inherit" }}
         >
           <FolderOutlinedIcon fontSize="small" />
         </IconButton>
@@ -44,9 +50,9 @@ function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders
         size="small"
         disabled={deletingId === c.id}
         onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
-        sx={{ opacity: 0.5, "&:hover": { opacity: 1, color: "error.main" } }}
+        sx={{ opacity: 0.5, "&:hover": { opacity: 1, color: "error.main" }, color: "inherit" }}
       >
-        {deletingId === c.id ? <CircularProgress size={14} /> : <DeleteOutlineOutlined fontSize="small" />}
+        {deletingId === c.id ? <CircularProgress size={14} color="inherit" /> : <DeleteOutlineOutlined fontSize="small" />}
       </IconButton>
       <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={() => setMenuAnchor(null)}>
         <MenuItem onClick={() => { onMoveToFolder(c.id, null); setMenuAnchor(null); }}>
@@ -66,20 +72,18 @@ export default function Sidebar({
   conversations, folders, folderByConv, activeId, onSelect, onNew, onDelete,
   onCreateFolder, onDeleteFolder, onMoveToFolder, onRenameFolder,
   loggedIn, onLogin, onLogout,
+  themeMode, onThemeChange,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
+  const [themeAnchorEl, setThemeAnchorEl] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [collapsed, setCollapsed] = useState({});
   
-  // Rename state
   const [renamingFolder, setRenamingFolder] = useState(null);
   const [renameValue, setRenameValue] = useState("");
-
-  // Delete confirmation state
   const [confirmDelete, setConfirmDelete] = useState(null); 
-  // { type: 'conversation' | 'folder', id: string, title: string }
 
   const handleDeleteClick = (type, id, title) => {
     setConfirmDelete({ type, id, title });
@@ -130,8 +134,13 @@ export default function Sidebar({
   return (
     <Box
       sx={{
-        width: 280, bgcolor: "grey.50", borderRight: "1px solid",
-        borderColor: "divider", display: "flex", flexDirection: "column", height: "100vh",
+        width: 280, 
+        bgcolor: "background.paper", 
+        borderRight: "1px solid",
+        borderColor: "divider", 
+        display: "flex", 
+        flexDirection: "column", 
+        height: "100vh",
       }}
     >
       <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1 }}>
@@ -179,7 +188,7 @@ export default function Sidebar({
             <Box
               sx={{
                 display: "flex", alignItems: "center", px: 2, py: 0.5,
-                cursor: "pointer", "&:hover": { bgcolor: "grey.100" },
+                cursor: "pointer", "&:hover": { bgcolor: "action.hover" },
               }}
               onClick={() => toggle(f.id)}
             >
@@ -268,22 +277,33 @@ export default function Sidebar({
       <Divider />
 
       <Box sx={{ p: 2 }}>
-        <Box
-          sx={{ display: "flex", alignItems: "center", gap: 1, cursor: "pointer" }}
-          onClick={(e) => setAnchorEl(e.currentTarget)}
-        >
-          <Avatar sx={{ width: 32, height: 32, bgcolor: loggedIn ? "primary.main" : "grey.400" }}>
-            {loggedIn ? "U" : "G"}
-          </Avatar>
-          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            <Typography variant="body2" fontWeight={600} noWrap>
-              {loggedIn ? "User" : "Guest"}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {loggedIn ? "History saved" : "No history saved"}
-            </Typography>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box
+            sx={{ display: "flex", alignItems: "center", gap: 1, cursor: "pointer", flexGrow: 1 }}
+            onClick={(e) => setAnchorEl(e.currentTarget)}
+          >
+            <Avatar sx={{ width: 32, height: 32, bgcolor: loggedIn ? "primary.main" : "grey.400" }}>
+              {loggedIn ? "U" : "G"}
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="body2" fontWeight={600} noWrap>
+                {loggedIn ? "User" : "Guest"}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" noWrap>
+                {loggedIn ? "History saved" : "No history saved"}
+              </Typography>
+            </Box>
           </Box>
+          
+          <Tooltip title="Change Theme">
+            <IconButton onClick={(e) => setThemeAnchorEl(e.currentTarget)}>
+              {themeMode === "light" && <Brightness7Icon />}
+              {themeMode === "dark" && <Brightness4Icon />}
+              {themeMode === "system" && <SettingsBrightnessIcon />}
+            </IconButton>
+          </Tooltip>
         </Box>
+
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
           {loggedIn ? (
             <MenuItem onClick={() => { setAnchorEl(null); onLogout(); }}>
@@ -295,9 +315,24 @@ export default function Sidebar({
             </MenuItem>
           )}
         </Menu>
+
+        <Menu
+          anchorEl={themeAnchorEl}
+          open={Boolean(themeAnchorEl)}
+          onClose={() => setThemeAnchorEl(null)}
+        >
+          <MenuItem onClick={() => { onThemeChange("light"); setThemeAnchorEl(null); }} selected={themeMode === "light"}>
+            <Brightness7Icon fontSize="small" sx={{ mr: 1 }} /> Light
+          </MenuItem>
+          <MenuItem onClick={() => { onThemeChange("dark"); setThemeAnchorEl(null); }} selected={themeMode === "dark"}>
+            <Brightness4Icon fontSize="small" sx={{ mr: 1 }} /> Dark
+          </MenuItem>
+          <MenuItem onClick={() => { onThemeChange("system"); setThemeAnchorEl(null); }} selected={themeMode === "system"}>
+            <SettingsBrightnessIcon fontSize="small" sx={{ mr: 1 }} /> System
+          </MenuItem>
+        </Menu>
       </Box>
 
-      {/* Rename Folder Dialog */}
       <Dialog open={Boolean(renamingFolder)} onClose={() => setRenamingFolder(null)} maxWidth="xs" fullWidth>
         <DialogTitle>Rename Folder</DialogTitle>
         <DialogContent>
@@ -323,24 +358,15 @@ export default function Sidebar({
         </DialogActions>
       </Dialog>
 
-      {/* PROFESSIONAL DELETE CONFIRMATION DIALOG */}
       <Dialog 
         open={Boolean(confirmDelete)} 
         onClose={() => setConfirmDelete(null)}
         maxWidth="xs"
         fullWidth
-        PaperProps={{
-          sx: { borderRadius: 3, p: 1 }
-        }}
+        PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
       >
         <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5, pb: 1 }}>
-          <Box sx={{ 
-            bgcolor: "error.50", 
-            color: "error.main", 
-            p: 1, 
-            borderRadius: "50%", 
-            display: "flex" 
-          }}>
+          <Box sx={{ bgcolor: "error.50", color: "error.main", p: 1, borderRadius: "50%", display: "flex" }}>
             <WarningAmberIcon />
           </Box>
           <Typography variant="h6" fontWeight={600}>

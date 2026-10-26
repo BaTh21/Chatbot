@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Box, Snackbar, Alert } from "@mui/material";
+import React, { useEffect, useRef, useState, useMemo } from "react";
+import { Box, Snackbar, Alert, ThemeProvider, CssBaseline } from "@mui/material";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import AuthDialog from "./components/AuthDialog";
+import { getTheme } from "./theme";
 import {
   fetchHistory, fetchFolders, fetchAttachments,
   createFolder, deleteFolder, renameFolder,
@@ -19,6 +20,21 @@ function nowTime() {
 }
 
 export default function App() {
+  // --- THEME STATE ---
+  const [themeMode, setThemeMode] = useState(
+    () => localStorage.getItem("themeMode") || "system"
+  );
+
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const activeMode = themeMode === "system" ? (prefersDark ? "dark" : "light") : themeMode;
+  const theme = useMemo(() => getTheme(activeMode), [activeMode]);
+
+  const handleThemeChange = (newMode) => {
+    setThemeMode(newMode);
+    localStorage.setItem("themeMode", newMode);
+  };
+
+  // --- APP STATE ---
   const [conversations, setConversations] = useState([]);
   const [folders, setFolders] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -45,7 +61,7 @@ export default function App() {
             setFolderByConv(parsed.folderByConv || {});
             if (parsed.conversations?.length) setActiveId(parsed.conversations[0].id);
           }
-        } catch { }
+        } catch {}
         return;
       }
 
@@ -92,7 +108,6 @@ export default function App() {
           msgs[cid] = arr;
         });
 
-        // Fetch attachments
         const attachmentsByConv = {};
         await Promise.all(
           convs.map(async (c) => {
@@ -104,14 +119,12 @@ export default function App() {
           })
         );
 
-        // Attach to the CORRECT user message
         Object.keys(msgs).forEach((cid) => {
           const atts = attachmentsByConv[cid] || [];
           if (!atts.length) return;
           const arr = msgs[cid];
-
+          
           atts.forEach(att => {
-            // Find the user message with the matching DB ID
             const msgIdx = arr.findIndex(m => m.role === "user" && m.id === att.message_id);
             if (msgIdx !== -1) {
               if (!arr[msgIdx].attachments) arr[msgIdx].attachments = [];
@@ -238,32 +251,27 @@ export default function App() {
 
     setLoading(true);
     try {
-      // 1. Call the backend to update the text and generate the new reply
       const data = await updateMessage(messageId, newText);
 
-      // 2. Update the frontend state instantly
       setMessagesByConv((prev) => {
         const arr = [...(prev[convId] || [])];
         const idx = arr.findIndex((m) => m.id === messageId);
-
+        
         if (idx !== -1) {
-          // Update the user text
           arr[idx] = { ...arr[idx], content: data.user_message };
-
-          // If there is an AI reply right after it, update it. 
-          // If not, insert it.
+          
           if (idx + 1 < arr.length && arr[idx + 1].role === "assistant") {
-            arr[idx + 1] = {
-              ...arr[idx + 1],
-              content: data.bot_reply,
-              time: nowTime()
+            arr[idx + 1] = { 
+              ...arr[idx + 1], 
+              content: data.bot_reply, 
+              time: nowTime() 
             };
           } else {
-            arr.splice(idx + 1, 0, {
-              role: "assistant",
-              content: data.bot_reply,
-              time: nowTime(),
-              id: data.id
+            arr.splice(idx + 1, 0, { 
+              role: "assistant", 
+              content: data.bot_reply, 
+              time: nowTime(), 
+              id: data.id 
             });
           }
         }
@@ -287,8 +295,8 @@ export default function App() {
     setPendingFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const sendMessage = async (text, overrideConvId = null, skipUserBubble = false) => {
-    let convId = overrideConvId || activeId;
+  const sendMessage = async (text) => {
+    let convId = activeId;
     if (!convId) {
       convId = makeId();
       setConversations((prev) => [{ id: convId, title: text.slice(0, 40) || "New conversation" }, ...prev]);
@@ -299,7 +307,7 @@ export default function App() {
     const folderId = folderByConv[convId] ?? null;
 
     let uploaded = [];
-    if (!skipUserBubble && loggedIn && pendingFiles.length > 0) {
+    if (loggedIn && pendingFiles.length > 0) {
       setIsUploading(true);
       try {
         for (const f of pendingFiles) {
@@ -314,19 +322,16 @@ export default function App() {
       setIsUploading(false);
     }
 
-    if (!skipUserBubble) {
-      const tempId = makeId();
-      const userMsg = {
-        role: "user",
-        content: text,
-        time: nowTime(),
-        attachments: uploaded,
-        id: tempId,
-      };
-      setMessagesByConv((prev) => ({ ...prev, [convId]: [...(prev[convId] || []), userMsg] }));
-      setPendingFiles([]);
-    }
-
+    const tempId = makeId();
+    const userMsg = {
+      role: "user",
+      content: text,
+      time: nowTime(),
+      attachments: uploaded,
+      id: tempId, 
+    };
+    setMessagesByConv((prev) => ({ ...prev, [convId]: [...(prev[convId] || []), userMsg] }));
+    setPendingFiles([]);
     setConversations((prev) =>
       prev.map((c) =>
         c.id === convId && c.title === "New conversation"
@@ -341,16 +346,16 @@ export default function App() {
     abortRef.current = new AbortController();
     try {
       const data = await sendChatMessage(text, convId, convId, folderId);
+      
       setMessagesByConv((prev) => {
         const arr = [...(prev[convId] || [])];
-        const lastUserIdx = [...arr].reverse().findIndex(m => m.role === "user");
-        if (lastUserIdx !== -1) {
-          const realIdx = arr.length - 1 - lastUserIdx;
-          arr[realIdx] = { ...arr[realIdx], id: data.id };
+        const tempIdx = arr.findIndex(m => m.id === tempId);
+        if (tempIdx !== -1) {
+          arr[tempIdx] = { ...arr[tempIdx], id: data.id };
         }
-
+        
         arr.push({ role: "assistant", content: data.reply, time: nowTime(), id: data.id });
-
+        
         return { ...prev, [convId]: arr };
       });
 
@@ -379,56 +384,61 @@ export default function App() {
   const activeConv = conversations.find((c) => c.id === activeId);
 
   return (
-    <Box sx={{ display: "flex", height: "100vh", bgcolor: "background.default" }}>
-      <Sidebar
-        conversations={conversations}
-        folders={folders}
-        folderByConv={folderByConv}
-        activeId={activeId}
-        onSelect={setActiveId}
-        onNew={newChat}
-        onDelete={deleteChat}
-        onCreateFolder={handleCreateFolder}
-        onRenameFolder={handleRenameFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onMoveToFolder={handleMoveToFolder}
-        loggedIn={loggedIn}
-        onLogin={() => setAuthOpen(true)}
-        onLogout={() => {
-          logout();
-          setLoggedIn(false);
-        }}
-      />
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: "flex", height: "100vh", bgcolor: "background.default" }}>
+        <Sidebar
+          conversations={conversations}
+          folders={folders}
+          folderByConv={folderByConv}
+          activeId={activeId}
+          onSelect={setActiveId}
+          onNew={newChat}
+          onDelete={deleteChat}
+          onCreateFolder={handleCreateFolder}
+          onRenameFolder={handleRenameFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onMoveToFolder={handleMoveToFolder}
+          loggedIn={loggedIn}
+          onLogin={() => setAuthOpen(true)}
+          onLogout={() => {
+            logout();
+            setLoggedIn(false);
+          }}
+          themeMode={themeMode}
+          onThemeChange={handleThemeChange}
+        />
 
-      <ChatArea
-        messages={activeMessages}
-        loading={loading}
-        onSend={sendMessage}
-        onStop={stop}
-        headerTitle={activeConv?.title}
-        isGuest={!loggedIn}
-        pendingFiles={pendingFiles}
-        onAddFiles={handleAddFiles}
-        onRemoveFile={handleRemoveFile}
-        isUploading={isUploading}
-        onEditMessage={handleEditMessage}
-        onDeleteMessage={handleDeleteMessage}
-      />
+        <ChatArea
+          messages={activeMessages}
+          loading={loading}
+          onSend={sendMessage}
+          onStop={stop}
+          headerTitle={activeConv?.title}
+          isGuest={!loggedIn}
+          pendingFiles={pendingFiles}
+          onAddFiles={handleAddFiles}
+          onRemoveFile={handleRemoveFile}
+          isUploading={isUploading}
+          onEditMessage={handleEditMessage}
+          onDeleteMessage={handleDeleteMessage}
+        />
 
-      <AuthDialog
-        open={authOpen}
-        onClose={() => setAuthOpen(false)}
-        onSuccess={() => setLoggedIn(true)}
-      />
+        <AuthDialog
+          open={authOpen}
+          onClose={() => setAuthOpen(false)}
+          onSuccess={() => setLoggedIn(true)}
+        />
 
-      <Snackbar
-        open={Boolean(error)}
-        autoHideDuration={4000}
-        onClose={() => setError("")}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert severity="error" onClose={() => setError("")}>{error}</Alert>
-      </Snackbar>
-    </Box>
+        <Snackbar
+          open={Boolean(error)}
+          autoHideDuration={4000}
+          onClose={() => setError("")}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        >
+          <Alert severity="error" onClose={() => setError("")}>{error}</Alert>
+        </Snackbar>
+      </Box>
+    </ThemeProvider>
   );
 }
