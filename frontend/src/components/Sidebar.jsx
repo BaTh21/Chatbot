@@ -2,11 +2,13 @@ import React, { useState } from "react";
 import {
   Box, Typography, Button, List, ListItemButton, ListItemText,
   IconButton, Divider, Avatar, Menu, MenuItem, CircularProgress,
-  Collapse, TextField, Tooltip,
+  Collapse, TextField, Tooltip, Dialog, DialogTitle, DialogContent, 
+  DialogActions, DialogContentText
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import ChatBubbleOutlineOutlined from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import DeleteOutlineOutlined from "@mui/icons-material/DeleteOutlineOutlined";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import LoginIcon from "@mui/icons-material/Login";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
@@ -14,6 +16,7 @@ import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import CreateNewFolderOutlinedIcon from "@mui/icons-material/CreateNewFolderOutlined";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import ExpandLessIcon from "@mui/icons-material/ExpandLess";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 
 function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders, onMoveToFolder }) {
   const [menuAnchor, setMenuAnchor] = useState(null);
@@ -41,7 +44,7 @@ function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders
         size="small"
         disabled={deletingId === c.id}
         onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
-        sx={{ opacity: 0.5, "&:hover": { opacity: 1 } }}
+        sx={{ opacity: 0.5, "&:hover": { opacity: 1, color: "error.main" } }}
       >
         {deletingId === c.id ? <CircularProgress size={14} /> : <DeleteOutlineOutlined fontSize="small" />}
       </IconButton>
@@ -61,7 +64,7 @@ function ConversationItem({ c, activeId, onSelect, onDelete, deletingId, folders
 
 export default function Sidebar({
   conversations, folders, folderByConv, activeId, onSelect, onNew, onDelete,
-  onCreateFolder, onDeleteFolder, onMoveToFolder,
+  onCreateFolder, onDeleteFolder, onMoveToFolder, onRenameFolder,
   loggedIn, onLogin, onLogout,
 }) {
   const [anchorEl, setAnchorEl] = useState(null);
@@ -69,15 +72,33 @@ export default function Sidebar({
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [collapsed, setCollapsed] = useState({});
+  
+  // Rename state
+  const [renamingFolder, setRenamingFolder] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
 
-  const handleDelete = async (id) => {
-    if (deletingId) return;
-    if (!window.confirm("Delete this conversation permanently?")) return;
-    setDeletingId(id);
-    try {
-      await onDelete(id);
-    } finally {
-      setDeletingId(null);
+  // Delete confirmation state
+  const [confirmDelete, setConfirmDelete] = useState(null); 
+  // { type: 'conversation' | 'folder', id: string, title: string }
+
+  const handleDeleteClick = (type, id, title) => {
+    setConfirmDelete({ type, id, title });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDelete) return;
+    const { type, id } = confirmDelete;
+    setConfirmDelete(null);
+
+    if (type === "conversation") {
+      setDeletingId(id);
+      try {
+        await onDelete(id);
+      } finally {
+        setDeletingId(null);
+      }
+    } else if (type === "folder") {
+      await onDeleteFolder(id);
     }
   };
 
@@ -87,6 +108,13 @@ export default function Sidebar({
     await onCreateFolder(name);
     setFolderName("");
     setCreatingFolder(false);
+  };
+
+  const submitRename = async () => {
+    const name = renameValue.trim();
+    if (!name || !renamingFolder) return;
+    await onRenameFolder(renamingFolder, name);
+    setRenamingFolder(null);
   };
 
   const grouped = { root: [] };
@@ -160,14 +188,27 @@ export default function Sidebar({
               <Typography variant="body2" fontWeight={600} sx={{ flexGrow: 1 }} noWrap>
                 {f.name}
               </Typography>
+              
               <IconButton
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (window.confirm(`Delete folder "${f.name}"? Conversations will move to root.`)) {
-                    onDeleteFolder(f.id);
-                  }
+                  setRenamingFolder(f.id);
+                  setRenameValue(f.name);
                 }}
+                title="Rename folder"
+              >
+                <EditOutlinedIcon fontSize="small" />
+              </IconButton>
+
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteClick("folder", f.id, f.name);
+                }}
+                title="Delete folder"
+                sx={{ "&:hover": { color: "error.main" } }}
               >
                 <DeleteOutlineOutlined fontSize="small" />
               </IconButton>
@@ -181,7 +222,7 @@ export default function Sidebar({
                       c={c}
                       activeId={activeId}
                       onSelect={onSelect}
-                      onDelete={handleDelete}
+                      onDelete={(id) => handleDeleteClick("conversation", id, c.title)}
                       deletingId={deletingId}
                       folders={folders}
                       onMoveToFolder={onMoveToFolder}
@@ -210,7 +251,7 @@ export default function Sidebar({
                 c={c}
                 activeId={activeId}
                 onSelect={onSelect}
-                onDelete={handleDelete}
+                onDelete={(id) => handleDeleteClick("conversation", id, c.title)}
                 deletingId={deletingId}
                 folders={folders}
                 onMoveToFolder={onMoveToFolder}
@@ -255,6 +296,83 @@ export default function Sidebar({
           )}
         </Menu>
       </Box>
+
+      {/* Rename Folder Dialog */}
+      <Dialog open={Boolean(renamingFolder)} onClose={() => setRenamingFolder(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Rename Folder</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Folder Name"
+            fullWidth
+            variant="outlined"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitRename();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenamingFolder(null)}>Cancel</Button>
+          <Button variant="contained" onClick={submitRename}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* PROFESSIONAL DELETE CONFIRMATION DIALOG */}
+      <Dialog 
+        open={Boolean(confirmDelete)} 
+        onClose={() => setConfirmDelete(null)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 3, p: 1 }
+        }}
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1.5, pb: 1 }}>
+          <Box sx={{ 
+            bgcolor: "error.50", 
+            color: "error.main", 
+            p: 1, 
+            borderRadius: "50%", 
+            display: "flex" 
+          }}>
+            <WarningAmberIcon />
+          </Box>
+          <Typography variant="h6" fontWeight={600}>
+            Delete {confirmDelete?.type === "folder" ? "Folder" : "Conversation"}?
+          </Typography>
+        </DialogTitle>
+        
+        <DialogContent>
+          <DialogContentText color="text.secondary">
+            Are you sure you want to permanently delete 
+            <strong> "{confirmDelete?.title}"</strong>? 
+            {confirmDelete?.type === "folder" && " All conversations inside this folder will be moved to the root."}
+            <br /><br />
+            This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setConfirmDelete(null)} color="inherit" sx={{ fontWeight: 600 }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={executeDelete} 
+            color="error" 
+            variant="contained"
+            disableElevation
+            sx={{ borderRadius: 2, fontWeight: 600 }}
+          >
+            Delete Permanently
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

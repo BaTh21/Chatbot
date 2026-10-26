@@ -77,6 +77,21 @@ export async function sendChatMessage(message, sessionId, conversationId, folder
   });
 }
 
+export async function deleteMessage(messageId) {
+  return request(`/history/message/${messageId}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
+export async function updateMessage(messageId, message) {
+  return request(`/history/message/${messageId}`, {
+    method: "PATCH",
+    auth: true,
+    body: { message },
+  });
+}
+
 export async function fetchHistory() {
   return request("/history", { auth: true });
 }
@@ -104,6 +119,49 @@ export async function createFolder(name) {
   return request("/folders", { method: "POST", auth: true, body: { name } });
 }
 
+export async function renameFolder(folderId, name) {
+  return request(`/folders/${folderId}`, {
+    method: "PATCH",
+    auth: true,
+    body: { name },
+  });
+}
+
 export async function deleteFolder(folderId) {
   return request(`/folders/${folderId}`, { method: "DELETE", auth: true });
+}
+
+export async function uploadAttachment(file, conversationId) {
+  const token = getToken();
+  const form = new FormData();
+  form.append("file", file);
+  form.append("conversation_id", conversationId);
+
+  const res = await fetch(`${API_URL}/attachments`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const err = new Error(data?.detail || `Upload failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+export async function fetchAttachments(conversationId) {
+  return request(`/attachments?conversation_id=${encodeURIComponent(conversationId)}`, {
+    auth: true,
+  });
+}
+
+export async function deleteAttachment(attachmentId) {
+  return request(`/attachments/${attachmentId}`, { method: "DELETE", auth: true });
+}
+
+export function attachmentUrl(id) {
+  return `${API_URL}/attachments/${id}`;
 }

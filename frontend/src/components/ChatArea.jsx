@@ -1,18 +1,24 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   Box, TextField, IconButton, Typography, CircularProgress, Chip, Paper,
+  Tooltip,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import StopIcon from "@mui/icons-material/Stop";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import CloseIcon from "@mui/icons-material/Close";
 import MessageBubble from "./MessageBubble";
 import WelcomeScreen from "./WelcomeScreen";
 
 export default function ChatArea({
   messages, loading, onSend, onStop, headerTitle, isGuest,
+  pendingFiles, onAddFiles, onRemoveFile, isUploading,
+  onEditMessage, onDeleteMessage,
 }) {
   const [input, setInput] = useState("");
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -24,7 +30,7 @@ export default function ChatArea({
 
   const handleSubmit = (e) => {
     e?.preventDefault();
-    if (!input.trim() || loading) return;
+    if ((!input.trim() && pendingFiles.length === 0) || loading) return;
     onSend(input.trim());
     setInput("");
   };
@@ -36,8 +42,15 @@ export default function ChatArea({
     }
   };
 
+  const handleFilePick = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length) onAddFiles(files);
+    e.target.value = "";
+  };
+
   return (
     <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", height: "100vh", minWidth: 0 }}>
+      {/* Header */}
       <Box
         sx={{
           px: 3, py: 2, borderBottom: "1px solid", borderColor: "divider",
@@ -55,13 +68,23 @@ export default function ChatArea({
         />
       </Box>
 
+      {/* Messages Area */}
       <Box sx={{ flexGrow: 1, overflowY: "auto", px: 3, py: 3 }}>
         {messages.length === 0 && !loading ? (
           <WelcomeScreen onSelect={(p) => onSend(p)} />
         ) : (
           <Box sx={{ maxWidth: 820, mx: "auto" }}>
             {messages.map((m, i) => (
-              <MessageBubble key={i} role={m.role} content={m.content} time={m.time} />
+              <MessageBubble
+                key={i}
+                role={m.role}
+                content={m.content}
+                time={m.time}
+                attachments={m.attachments}
+                messageId={m.id}
+                onEdit={onEditMessage}
+                onDelete={onDeleteMessage}
+              />
             ))}
             {loading && (
               <Box sx={{ display: "flex", gap: 1, alignItems: "center", ml: 6, mt: 1 }}>
@@ -76,6 +99,7 @@ export default function ChatArea({
         )}
       </Box>
 
+      {/* Composer Area */}
       <Box sx={{ borderTop: "1px solid", borderColor: "divider", bgcolor: "background.paper", p: 2 }}>
         <Paper
           component="form"
@@ -87,6 +111,26 @@ export default function ChatArea({
             "&:focus-within": { borderColor: "primary.main" },
           }}
         >
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            hidden
+            onChange={handleFilePick}
+            disabled={isGuest}
+            accept="image/*,application/pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx"
+          />
+          <Tooltip title={isGuest ? "Login to attach files" : "Attach file"}>
+            <span>
+              <IconButton
+                onClick={() => fileRef.current?.click()}
+                disabled={isGuest || loading || isUploading}
+              >
+                {isUploading ? <CircularProgress size={20} /> : <AttachFileIcon />}
+              </IconButton>
+            </span>
+          </Tooltip>
+
           <TextField
             inputRef={inputRef}
             fullWidth
@@ -106,11 +150,31 @@ export default function ChatArea({
               <StopIcon />
             </IconButton>
           ) : (
-            <IconButton type="submit" color="primary" disabled={!input.trim()}>
+            <IconButton
+              type="submit"
+              color="primary"
+              disabled={(!input.trim() && pendingFiles.length === 0) || isUploading}
+            >
               <SendIcon />
             </IconButton>
           )}
         </Paper>
+
+        {/* Pending Files Preview */}
+        {pendingFiles.length > 0 && (
+          <Box sx={{ maxWidth: 820, mx: "auto", mt: 1, display: "flex", gap: 1, flexWrap: "wrap" }}>
+            {pendingFiles.map((f, i) => (
+              <Chip
+                key={i}
+                label={f.name}
+                onDelete={() => onRemoveFile(i)}
+                deleteIcon={<CloseIcon />}
+                size="small"
+              />
+            ))}
+          </Box>
+        )}
+
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", textAlign: "center", mt: 1 }}>
           AI can make mistakes. Verify important information.
         </Typography>

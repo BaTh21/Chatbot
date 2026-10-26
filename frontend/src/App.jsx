@@ -4,15 +4,11 @@ import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
 import AuthDialog from "./components/AuthDialog";
 import {
-  fetchHistory,
-  fetchFolders,
-  createFolder,
-  deleteFolder,
-  isLoggedIn,
-  logout,
-  sendChatMessage,
-  deleteConversation,
-  moveConversation,
+  fetchHistory, fetchFolders, fetchAttachments,
+  createFolder, deleteFolder, renameFolder,
+  isLoggedIn, logout, sendChatMessage, deleteConversation,
+  moveConversation, uploadAttachment,
+  deleteMessage, updateMessage,
 } from "./api";
 
 function makeId() {
@@ -32,11 +28,12 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(isLoggedIn());
   const [authOpen, setAuthOpen] = useState(false);
   const [error, setError] = useState("");
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
   const abortRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
-      // Guest path: never call backend, so no 401
       if (!isLoggedIn()) {
         try {
           const raw = localStorage.getItem("chatbot_conversations");
@@ -48,11 +45,10 @@ export default function App() {
             setFolderByConv(parsed.folderByConv || {});
             if (parsed.conversations?.length) setActiveId(parsed.conversations[0].id);
           }
-        } catch {}
+        } catch { }
         return;
       }
 
-      // Logged-in path: fetch from backend
       try {
         const [rows, folderRows] = await Promise.all([fetchHistory(), fetchFolders()]);
         setFolders(folderRows);
@@ -77,21 +73,51 @@ export default function App() {
         const convs = [];
         const msgs = {};
         Object.entries(groups).forEach(([cid, items]) => {
-          convs.push({ id: cid, title: items[0].user_message.slice(0, 40) });
+          convs.push({ id: cid, title: items[0].user_message.slice(0, 40) || "Image/File" });
           const arr = [];
           items.forEach((r) => {
             arr.push({
               role: "user",
               content: r.user_message,
               time: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              id: r.id,
             });
             arr.push({
               role: "assistant",
               content: r.bot_reply,
               time: new Date(r.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              id: r.id,
             });
           });
           msgs[cid] = arr;
+        });
+
+        // Fetch attachments
+        const attachmentsByConv = {};
+        await Promise.all(
+          convs.map(async (c) => {
+            try {
+              attachmentsByConv[c.id] = await fetchAttachments(c.id);
+            } catch {
+              attachmentsByConv[c.id] = [];
+            }
+          })
+        );
+
+        // Attach to the CORRECT user message
+        Object.keys(msgs).forEach((cid) => {
+          const atts = attachmentsByConv[cid] || [];
+          if (!atts.length) return;
+          const arr = msgs[cid];
+
+          atts.forEach(att => {
+            // Find the user message with the matching DB ID
+            const msgIdx = arr.findIndex(m => m.role === "user" && m.id === att.message_id);
+            if (msgIdx !== -1) {
+              if (!arr[msgIdx].attachments) arr[msgIdx].attachments = [];
+              arr[msgIdx].attachments.push(att);
+            }
+          });
         });
 
         convs.sort((a, b) => (a.id < b.id ? 1 : -1));
@@ -134,8 +160,17 @@ export default function App() {
     try {
       const f = await createFolder(name);
       setFolders((prev) => [...prev, f]);
-    } catch (err) {
-      setError(err.message);
+    } catch (err) { setError(err.message); }
+  };
+
+  const handleRenameFolder = async (folderId, newName) => {
+    if (loggedIn) {
+      try {
+        const updated = await renameFolder(folderId, newName);
+        setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, name: updated.name } : f)));
+      } catch (err) { setError(err.message); }
+    } else {
+      setFolders((prev) => prev.map((f) => (f.id === folderId ? { ...f, name: newName } : f)));
     }
   };
 
@@ -143,17 +178,12 @@ export default function App() {
     if (loggedIn) {
       try {
         await deleteFolder(folderId);
-      } catch (err) {
-        setError(err.message);
-        return;
-      }
+      } catch (err) { setError(err.message); return; }
     }
     setFolders((prev) => prev.filter((f) => f.id !== folderId));
     setFolderByConv((prev) => {
       const copy = { ...prev };
-      Object.keys(copy).forEach((k) => {
-        if (copy[k] === folderId) copy[k] = null;
-      });
+      Object.keys(copy).forEach((k) => { if (copy[k] === folderId) copy[k] = null; });
       return copy;
     });
   };
@@ -162,10 +192,7 @@ export default function App() {
     if (loggedIn) {
       try {
         await moveConversation(convId, folderId);
-      } catch (err) {
-        setError(err.message);
-        return;
-      }
+      } catch (err) { setError(err.message); return; }
     }
     setFolderByConv((prev) => ({ ...prev, [convId]: folderId }));
   };
@@ -174,10 +201,7 @@ export default function App() {
     if (loggedIn) {
       try {
         await deleteConversation(id);
-      } catch (err) {
-        setError(err.message);
-        return;
-      }
+      } catch (err) { setError(err.message); return; }
     }
     setConversations((prev) => prev.filter((c) => c.id !== id));
     setMessagesByConv((prev) => {
@@ -193,32 +217,143 @@ export default function App() {
     if (activeId === id) setActiveId(null);
   };
 
-  const sendMessage = async (text) => {
-    let convId = activeId;
+  const handleDeleteMessage = async (messageId) => {
+    if (loggedIn) {
+      try {
+        await deleteMessage(messageId);
+      } catch (err) { setError(err.message); return; }
+    }
+    setMessagesByConv((prev) => {
+      const newMsgs = { ...prev };
+      Object.keys(newMsgs).forEach((cid) => {
+        newMsgs[cid] = newMsgs[cid].filter((m) => m.id !== messageId);
+      });
+      return newMsgs;
+    });
+  };
+
+  const handleEditMessage = async (messageId, newText) => {
+    const convId = activeId;
+    if (!convId) return;
+
+    setLoading(true);
+    try {
+      // 1. Call the backend to update the text and generate the new reply
+      const data = await updateMessage(messageId, newText);
+
+      // 2. Update the frontend state instantly
+      setMessagesByConv((prev) => {
+        const arr = [...(prev[convId] || [])];
+        const idx = arr.findIndex((m) => m.id === messageId);
+
+        if (idx !== -1) {
+          // Update the user text
+          arr[idx] = { ...arr[idx], content: data.user_message };
+
+          // If there is an AI reply right after it, update it. 
+          // If not, insert it.
+          if (idx + 1 < arr.length && arr[idx + 1].role === "assistant") {
+            arr[idx + 1] = {
+              ...arr[idx + 1],
+              content: data.bot_reply,
+              time: nowTime()
+            };
+          } else {
+            arr.splice(idx + 1, 0, {
+              role: "assistant",
+              content: data.bot_reply,
+              time: nowTime(),
+              id: data.id
+            });
+          }
+        }
+        return { ...prev, [convId]: arr };
+      });
+
+    } catch (err) {
+      setError(err.message || "Failed to edit message");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddFiles = (files) => {
+    const allowed = files.filter((f) => f.size <= 10 * 1024 * 1024);
+    if (allowed.length < files.length) setError("Some files exceed 10 MB and were skipped");
+    setPendingFiles((prev) => [...prev, ...allowed]);
+  };
+
+  const handleRemoveFile = (index) => {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const sendMessage = async (text, overrideConvId = null, skipUserBubble = false) => {
+    let convId = overrideConvId || activeId;
     if (!convId) {
       convId = makeId();
-      setConversations((prev) => [{ id: convId, title: text.slice(0, 40) }, ...prev]);
+      setConversations((prev) => [{ id: convId, title: text.slice(0, 40) || "New conversation" }, ...prev]);
       setMessagesByConv((prev) => ({ ...prev, [convId]: [] }));
       setActiveId(convId);
     }
 
     const folderId = folderByConv[convId] ?? null;
-    const userMsg = { role: "user", content: text, time: nowTime() };
-    setMessagesByConv((prev) => ({ ...prev, [convId]: [...(prev[convId] || []), userMsg] }));
+
+    let uploaded = [];
+    if (!skipUserBubble && loggedIn && pendingFiles.length > 0) {
+      setIsUploading(true);
+      try {
+        for (const f of pendingFiles) {
+          const att = await uploadAttachment(f, convId);
+          uploaded.push(att);
+        }
+      } catch (err) {
+        setError(err.message || "Upload failed");
+        setIsUploading(false);
+        return;
+      }
+      setIsUploading(false);
+    }
+
+    if (!skipUserBubble) {
+      const tempId = makeId();
+      const userMsg = {
+        role: "user",
+        content: text,
+        time: nowTime(),
+        attachments: uploaded,
+        id: tempId,
+      };
+      setMessagesByConv((prev) => ({ ...prev, [convId]: [...(prev[convId] || []), userMsg] }));
+      setPendingFiles([]);
+    }
+
     setConversations((prev) =>
       prev.map((c) =>
-        c.id === convId && c.title === "New conversation" ? { ...c, title: text.slice(0, 40) } : c
+        c.id === convId && c.title === "New conversation"
+          ? { ...c, title: text.slice(0, 40) || "New conversation" }
+          : c
       )
     );
+
+    if (!text.trim()) return;
 
     setLoading(true);
     abortRef.current = new AbortController();
     try {
       const data = await sendChatMessage(text, convId, convId, folderId);
-      setMessagesByConv((prev) => ({
-        ...prev,
-        [convId]: [...(prev[convId] || []), { role: "assistant", content: data.reply, time: nowTime() }],
-      }));
+      setMessagesByConv((prev) => {
+        const arr = [...(prev[convId] || [])];
+        const lastUserIdx = [...arr].reverse().findIndex(m => m.role === "user");
+        if (lastUserIdx !== -1) {
+          const realIdx = arr.length - 1 - lastUserIdx;
+          arr[realIdx] = { ...arr[realIdx], id: data.id };
+        }
+
+        arr.push({ role: "assistant", content: data.reply, time: nowTime(), id: data.id });
+
+        return { ...prev, [convId]: arr };
+      });
+
     } catch (err) {
       if (err.status === 401) {
         logout();
@@ -254,6 +389,7 @@ export default function App() {
         onNew={newChat}
         onDelete={deleteChat}
         onCreateFolder={handleCreateFolder}
+        onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onMoveToFolder={handleMoveToFolder}
         loggedIn={loggedIn}
@@ -271,6 +407,12 @@ export default function App() {
         onStop={stop}
         headerTitle={activeConv?.title}
         isGuest={!loggedIn}
+        pendingFiles={pendingFiles}
+        onAddFiles={handleAddFiles}
+        onRemoveFile={handleRemoveFile}
+        isUploading={isUploading}
+        onEditMessage={handleEditMessage}
+        onDeleteMessage={handleDeleteMessage}
       />
 
       <AuthDialog

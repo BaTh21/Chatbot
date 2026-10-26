@@ -4,3 +4,4 @@ venv/
 !.env.example
 __pycache__/
 *.pyc
+uploads/

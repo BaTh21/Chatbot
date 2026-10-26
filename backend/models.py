@@ -41,3 +41,21 @@ class ChatMessage(Base):
         Index("ix_chat_messages_session_created", "session_id", "created_at"),
         Index("ix_chat_messages_conv_created", "conversation_id", "created_at"),
     )
+
+
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    conversation_id = Column(String, nullable=False, index=True)
+    message_id = Column(Integer, ForeignKey("chat_messages.id"), nullable=True, index=True)
+    filename = Column(String, nullable=False)
+    content_type = Column(String, nullable=False)
+    size = Column(Integer, nullable=False)
+    stored_path = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_attachments_conv", "conversation_id", "created_at"),
+    )
