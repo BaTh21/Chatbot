@@ -4,6 +4,7 @@ import uuid
 import shutil
 from pathlib import Path
 from typing import Optional
+import re
 
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import FileResponse
@@ -21,7 +22,8 @@ from backend.models import Attachment, ChatMessage, User, Folder
 from backend.auth import get_current_user_optional
 from backend.auth_routes import router as auth_router
 
-load_dotenv()
+BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 app = FastAPI()
 app.add_middleware(
@@ -32,14 +34,17 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 
+# --- AI CLIENTS ---
+# 1. Groq Client (For Chat)
 client = OpenAI(
     api_key=os.getenv("GROQ_API_KEY"),
     base_url="https://api.groq.com/openai/v1",
 )
 
+
 SYSTEM_PROMPT = "You are a helpful assistant for a website."
-# Groq's vision model
-MODEL_NAME = "qwen/qwen3.8-27b" 
+MODEL_NAME = "openai/gpt-oss-120b"
+GEMINI_MODEL = "gemini-2.5-flash" 
 
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -47,6 +52,7 @@ MAX_SIZE = 10 * 1024 * 1024  # 10 MB
 ALLOWED_IMAGE = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
+# --- PYDANTIC MODELS ---
 class ChatRequest(BaseModel):
     message: str
     session_id: str
@@ -65,7 +71,6 @@ class HistoryItem(BaseModel):
     bot_reply: str
     created_at: str
 
-
 class FolderCreate(BaseModel):
     name: str
     
@@ -76,7 +81,6 @@ class FolderOut(BaseModel):
     id: int
     name: str
     created_at: str
-    
 
 class AttachmentOut(BaseModel):
     id: int
@@ -86,6 +90,56 @@ class AttachmentOut(BaseModel):
     url: str
     created_at: str
 
+class TranslationRequest(BaseModel):
+    text: str
+    target_lang: str = "km"
+
+def clean_markdown_tables(text: str) -> str:
+    if not text:
+        return text
+        
+    lines = text.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        stripped = line.strip()
+        # Check if line is a table row (starts and ends with |)
+        if stripped.startswith('|') and stripped.endswith('|'):
+            # 1. Replace HTML breaks with a comma and space
+            line = re.sub(r'<br\s*/?>', ', ', line)
+            # 2. Replace non-breaking hyphens to standard hyphens
+            line = line.replace('‑', '-')
+            # 3. Remove double commas if they exist
+            line = re.sub(r',\s*,', ',', line)
+            
+        cleaned_lines.append(line)
+        
+    return '\n'.join(cleaned_lines)
+
+def clean_ai_text(text: str) -> str:
+    if not text:
+        return text
+    
+    # 1. Clean tables FIRST (removes <br> inside tables)
+    text = clean_markdown_tables(text)
+    
+    # 2. Replace remaining HTML breaks in regular text
+    text = text.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n")
+    
+    # 3. Replace emoji numbers
+    emoji_map = {"1️⃣": "1.", "2️⃣": "2.", "3️⃣": "3.", "4️⃣": "4.", "5️⃣": "5."}
+    for emoji, number in emoji_map.items():
+        text = text.replace(emoji, number)
+    
+    # 4. Remove broken Khmer characters (Replacement Character)
+    # The AI sometimes outputs '្\ufffd' or '\ufffd'
+    text = text.replace("្\ufffd", "្") # Fix broken coeng
+    text = text.replace("\ufffd", "")     # Remove any remaining unknown characters
+    
+    # 5. Remove excessive blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    return text.strip()
 
 @app.post("/chat")
 async def chat(
@@ -118,7 +172,6 @@ async def chat(
         pdf_text = ""
 
         if is_real_user:
-            # Get the latest attachment
             att = (
                 db.query(Attachment)
                 .filter(
@@ -130,18 +183,15 @@ async def chat(
             )
             
             if att and Path(att.stored_path).exists():
-                # If it's an image
                 if att.content_type.startswith("image/"):
                     with open(att.stored_path, "rb") as f:
                         image_base64 = base64.b64encode(f.read()).decode("utf-8")
                         image_mime = att.content_type
                 
-                # If it's a PDF
                 elif att.content_type == "application/pdf":
                     try:
                         reader = PdfReader(att.stored_path)
                         extracted = []
-                        # Read up to 10 pages to avoid token limits
                         for page in reader.pages[:10]: 
                             text = page.extract_text()
                             if text:
@@ -166,7 +216,6 @@ async def chat(
                 ]
             })
         elif pdf_text:
-            # Inject the PDF text directly into the prompt
             prompt_with_pdf = (
                 f"Here is the text extracted from the attached PDF document:\n\n"
                 f"--- START PDF ---\n{pdf_text}\n--- END PDF ---\n\n"
@@ -196,7 +245,6 @@ async def chat(
             db.refresh(log)
             message_id = log.id
 
-            # NEW: Link the latest unlinked attachment to this new message
             unlinked_att = (
                 db.query(Attachment)
                 .filter(
@@ -225,7 +273,8 @@ async def chat(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
-    
+
+
 @app.delete("/history/message/{message_id}")
 def delete_message(
     message_id: int,
@@ -241,7 +290,6 @@ def delete_message(
     if msg.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your message")
 
-    # 1. Find all attachments linked to this message
     attachments = (
         db.query(Attachment)
         .filter(
@@ -251,7 +299,6 @@ def delete_message(
         .all()
     )
 
-    # 2. Delete physical files from disk
     for att in attachments:
         if Path(att.stored_path).exists():
             try:
@@ -259,11 +306,11 @@ def delete_message(
             except Exception as e:
                 print(f"Failed to delete file {att.stored_path}: {e}")
 
-    # 3. Delete the message (this cascades and deletes the attachment rows in the DB)
     db.delete(msg)
     db.commit()
     
     return {"deleted": message_id}
+
 
 @app.patch("/history/message/{message_id}")
 def update_message(
@@ -281,11 +328,9 @@ def update_message(
     if msg.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not your message")
 
-    # 1. Update the user message text in DB
     msg.user_message = data.message
     db.commit()
 
-    # 2. Fetch history for context
     history_rows = (
         db.query(ChatMessage)
         .filter(
@@ -296,7 +341,6 @@ def update_message(
         .all()
     )
 
-    # 3. Build messages for AI
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for row in history_rows:
         if row.id == msg.id and not row.bot_reply:
@@ -307,11 +351,9 @@ def update_message(
     
     messages.append({"role": "user", "content": data.message})
 
-    # 4. Get new AI reply
     response = client.chat.completions.create(model=MODEL_NAME, messages=messages)
     reply = response.choices[0].message.content
 
-    # 5. Update the DB with the new AI reply
     msg.bot_reply = reply
     db.commit()
     db.refresh(msg)
@@ -468,6 +510,7 @@ def create_folder(
     db.refresh(folder)
     return FolderOut(id=folder.id, name=folder.name, created_at=folder.created_at.isoformat())
 
+
 @app.patch("/folders/{folder_id}", response_model=FolderOut)
 def rename_folder(
     folder_id: int,
@@ -486,7 +529,6 @@ def rename_folder(
     if not new_name:
         raise HTTPException(status_code=422, detail="Folder name required")
 
-    # Check if another folder with the same name already exists
     exists = (
         db.query(Folder)
         .filter(Folder.user_id == current_user.id, Folder.name == new_name, Folder.id != folder_id)
@@ -500,6 +542,7 @@ def rename_folder(
     db.refresh(folder)
 
     return FolderOut(id=folder.id, name=folder.name, created_at=folder.created_at.isoformat())
+
 
 @app.delete("/folders/{folder_id}")
 def delete_folder(
